@@ -1,0 +1,237 @@
+# import required modules
+import turtle
+import time
+import random
+
+delay = 0.1
+score = 0
+high_score = 0
+
+
+# Creating a window screen
+wn = turtle.Screen()
+wn.title("Snake Game")
+wn.bgcolor("white")
+# the width and height can be put as user's choice
+wn.setup(width=600, height=600)
+wn.tracer(0)
+
+# head of the snake
+head = turtle.Turtle()
+head.shape("square")
+head.color("black")
+head.penup()
+head.goto(0, 0)
+head.direction = "Stop"
+
+# food in the game
+food = turtle.Turtle()
+colors = random.choice(['red', 'green', 'black'])
+shapes = random.choice(['square', 'triangle', 'circle'])
+food.speed(0)
+food.shape(shapes)
+food.color(colors)
+food.penup()
+food.goto(0, 100)
+
+pen = turtle.Turtle()
+pen.speed(0)
+pen.shape("square")
+pen.color("black")
+pen.penup()
+pen.hideturtle()
+pen.goto(0, 250)
+pen.write("Score : 0 High Score : 0", align="center",
+		font=("candara", 24, "bold"))
+
+
+# assigning key directions
+def group():
+	if head.direction != "down":
+		head.direction = "up"
+
+
+def godown():
+	if head.direction != "up":
+		head.direction = "down"
+
+
+def goleft():
+	if head.direction != "right":
+		head.direction = "left"
+
+
+def goright():
+	if head.direction != "left":
+		head.direction = "right"
+
+
+def move():
+	if head.direction == "up":
+		y = head.ycor()
+		head.sety(y+20)
+	if head.direction == "down":
+		y = head.ycor()
+		head.sety(y-20)
+	if head.direction == "left":
+		x = head.xcor()
+		head.setx(x-20)
+	if head.direction == "right":
+		x = head.xcor()
+		head.setx(x+20)
+  
+# Q-learning setup
+ACTIONS = ['up', 'down', 'left', 'right']
+q_table = {}  # Initialize your Q-table here based on your state representation
+
+learning_rate = 0.1
+discount_factor = 0.99
+exploration_rate = 1.0
+exploration_decay = 0.995  # How fast we reduce exploration rate
+min_exploration_rate = 0.01
+
+
+#find the current state of food and its postion to the snake head
+def get_state(head, food, segments): 
+    food_position = food.position()
+    head_position = head.position()
+
+    food_left = food_position[0] < head_position[0]
+    food_above = food_position[1] > head_position[1]
+
+    danger_straight = is_danger_ahead(head.direction, head, segments)
+    danger_right = is_danger_ahead("right" if head.direction == "up" else "down" if head.direction == "right" else "up" if head.direction == "left" else "left", head, segments)
+    danger_left = is_danger_ahead("left" if head.direction == "up" else "up" if head.direction == "right" else "down" if head.direction == "left" else "right", head, segments)
+
+    state = (
+        food_left,
+        food_above,
+        danger_straight,
+        danger_right,
+        danger_left
+    )
+    return state 
+
+#chooses the enxt action based on qlearning principles
+def choose_action(state):
+    global exploration_rate, q_table
+    
+    # Initialize Q values for a state to 0 if the state is not already in the Q-table
+    if state not in q_table:
+        q_table[state] = {action: 0 for action in ACTIONS}
+    
+    # Exploration vs Exploitation: Decide whether to choose a random action or the best known action
+    if random.uniform(0, 1) < exploration_rate:
+        # Exploration: Choose a random action
+        action = random.choice(ACTIONS)
+    else:
+        # Exploitation: Choose the best action based on the current Q-values
+        max_q_value = max(q_table[state].values())  # Find the max Q-value among actions for this state
+        best_actions = [action for action, value in q_table[state].items() if value == max_q_value]  # List of actions with max Q-value
+        action = random.choice(best_actions)  # Randomly select if multiple best actions
+    
+    return action
+
+#update the table based on the actions results
+def update_q_table(state, action, reward, next_state):
+    # Check if the next_state is not in the Q-table
+    if next_state not in q_table:
+        q_table[next_state] = {a: 0 for a in ACTIONS}
+    
+    # Calculate the maximum Q-value for the actions in the next state
+    next_max = max(q_table[next_state].values())
+    
+    # Update the Q-value for the state-action pair using the Q-learning formula
+    old_value = q_table[state][action]
+    new_value = (1 - learning_rate) * old_value + learning_rate * (reward + discount_factor * next_max)
+    q_table[state][action] = new_value
+
+#rerds for each action
+def calculate_reward(current_state, new_state, action):
+    # Initialize a small negative reward for each move to encourage finding food quickly
+    reward = -0.1
+    
+    # Check if the snake ate food
+    if new_state == "food_eaten":  # This requires you to detect food consumption in your game logic
+        reward = 10  # Large positive reward for eating food
+
+    # Check for collision with walls or self
+    elif new_state == "collision":
+        reward = -10  # Large negative reward for collision
+
+    return reward
+
+wn.listen()
+wn.onkeypress(group, "w")
+wn.onkeypress(godown, "s")
+wn.onkeypress(goleft, "a")
+wn.onkeypress(goright, "d")
+
+segments = []
+
+
+# Main Gameplay
+while True:
+	wn.update()
+	if head.xcor() > 290 or head.xcor() < -290 or head.ycor() > 290 or head.ycor() < -290:
+		time.sleep(1)
+		head.goto(0, 0)
+		head.direction = "Stop"
+		colors = random.choice(['red', 'blue', 'green'])
+		shapes = random.choice(['square', 'circle'])
+		for segment in segments:
+			segment.goto(1000, 1000)
+		segments.clear()
+		score = 0
+		delay = 0.1
+		pen.clear()
+		pen.write("Score : {} High Score : {} ".format(
+			score, high_score), align="center", font=("candara", 24, "bold"))
+	if head.distance(food) < 20:
+		x = random.randint(-270, 270)
+		y = random.randint(-270, 270)
+		food.goto(x, y)
+
+		# Adding segment
+		new_segment = turtle.Turtle()
+		new_segment.speed(0)
+		new_segment.shape("square")
+		new_segment.color("orange") # tail colour
+		new_segment.penup()
+		segments.append(new_segment)
+		delay -= 0.001
+		score += 10
+		if score > high_score:
+			high_score = score
+		pen.clear()
+		pen.write("Score : {} High Score : {} ".format(
+			score, high_score), align="center", font=("candara", 24, "bold"))
+	# Checking for head collisions with body segments
+	for index in range(len(segments)-1, 0, -1):
+		x = segments[index-1].xcor()
+		y = segments[index-1].ycor()
+		segments[index].goto(x, y)
+	if len(segments) > 0:
+		x = head.xcor()
+		y = head.ycor()
+		segments[0].goto(x, y)
+	move()
+	for segment in segments:
+		if segment.distance(head) < 20:
+			time.sleep(1)
+			head.goto(0, 0)
+			head.direction = "stop"
+			colors = random.choice(['red', 'blue', 'green'])
+			shapes = random.choice(['square', 'circle'])
+			for segment in segments:
+				segment.goto(1000, 1000)
+			segments.clear()
+
+			score = 0
+			delay = 0.1
+			pen.clear()
+			pen.write("Score : {} High Score : {} ".format(
+				score, high_score), align="center", font=("candara", 24, "bold"))
+	time.sleep(delay)
+
+wn.mainloop()
